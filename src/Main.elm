@@ -5,8 +5,10 @@ import Debug
 import Html exposing (..)
 import Html.Attributes exposing (style)
 import Html.Events exposing (onClick)
+import List.Extra
 import Random
 import Random.Extra
+import Random.List
 import Svg
 import Svg.Attributes
 
@@ -45,7 +47,9 @@ main =
 
 
 type alias Model =
-    { ships : List Ship }
+    { ships : List Ship
+    , availablePositions : List (List Position)
+    }
 
 
 type alias Ship =
@@ -54,6 +58,10 @@ type alias Ship =
     , position : Point
     , orientation : Orientation
     }
+
+
+type alias Position =
+    ( Int, Int )
 
 
 type ShipType
@@ -79,7 +87,7 @@ type alias Point =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model []
+    ( Model [] (Debug.log "grid" (initGrid maxRow maxCol))
     , Cmd.none
     )
 
@@ -94,7 +102,7 @@ type Msg
     | SetOrientation
     | SetPosition
     | UpdateOrientation (List Orientation)
-    | UpdatePosition (List ( Int, Int ))
+    | UpdatePosition (List Position)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -122,7 +130,7 @@ update msg model =
         SetPosition ->
             ( model
             , Random.generate UpdatePosition
-                (randomizePositions model.ships)
+                (choosePositions model.ships (Debug.log "list" (List.concat model.availablePositions)))
             )
 
         UpdatePosition positions ->
@@ -131,13 +139,30 @@ update msg model =
             )
 
 
+
+-- FUNCTIONS
+
+
+initGrid : Int -> Int -> List (List Position)
+initGrid rows cols =
+    List.indexedMap fillGrid
+        (List.repeat rows cols)
+
+
+fillGrid : Int -> Int -> List Position
+fillGrid index length =
+    List.map
+        (Tuple.pair index)
+        (List.range 0 (length - 1))
+
+
 initShips : List Ship
 initShips =
-    [ Ship Destroyer 2 (Point 0 0) Vertical
-    , Ship Submarine 3 (Point 0 0) Vertical
-    , Ship Cruiser 3 (Point 0 0) Vertical
+    [ Ship Carrier 5 (Point 0 0) Vertical
     , Ship Battleship 4 (Point 0 0) Vertical
-    , Ship Carrier 5 (Point 0 0) Vertical
+    , Ship Cruiser 3 (Point 0 0) Vertical
+    , Ship Submarine 3 (Point 0 0) Vertical
+    , Ship Destroyer 2 (Point 0 0) Vertical
     ]
 
 
@@ -165,7 +190,97 @@ updateOrientation orientations ships =
         ships
 
 
-randomizePositions : List Ship -> Random.Generator (List ( Int, Int ))
+choosePositions : List Ship -> List Position -> Random.Generator (List Position)
+choosePositions ships availablePositions =
+    Random.List.choose (filterPositionsByShip (List.head ships) availablePositions)
+        |> Random.andThen
+            (\res ->
+                let
+                    maybePos =
+                        Tuple.first res
+                in
+                case maybePos of
+                    Nothing ->
+                        Random.constant [ ( -1, -1 ) ]
+
+                    Just pos ->
+                        if List.length ships == 0 then
+                            Random.constant [ pos ]
+
+                        else
+                            Random.map
+                                (\partialList ->
+                                    pos :: partialList
+                                )
+                                (choosePositions
+                                    (List.drop 1 ships)
+                                    (List.Extra.remove pos availablePositions)
+                                )
+            )
+
+
+filterPositionsByShip : Maybe Ship -> List Position -> List Position
+filterPositionsByShip maybeShip positions =
+    case maybeShip of
+        Nothing ->
+            positions
+
+        Just ship ->
+            case ship.orientation of
+                Horizontal ->
+                    Debug.log "Horizontal" (List.filter (filterHorizontal ship.size) positions)
+
+                Vertical ->
+                    Debug.log "Vertical" (List.filter (filterVertical ship.size) positions)
+
+
+filterHorizontal : Int -> Position -> Bool
+filterHorizontal size position =
+    size >= Tuple.first position
+
+
+filterVertical : Int -> Position -> Bool
+filterVertical size position =
+    size >= Tuple.second position
+
+
+removeShipPosition : ship -> Position -> List Position -> List Position
+removeShipPosition ship pos positions =
+    let
+        maybeIndex =
+            List.Extra.elemIndex pos
+    in
+    case maybeIndex of
+        Nothing ->
+            positions
+
+        Just index ->
+            case ship.orientation of
+                Horizontal ->
+                    List.removeIfIndex
+                        (flip
+                            (List.member
+                                (List.range index ship.size)
+                            )
+                        )
+                        positions
+
+                Vertical ->
+                    List.removeIfIndex
+                        (flip
+                            (List.member
+                                (List.map ((+) maxRow)
+                                    (List.repeat ship.size pos)
+                                )
+                            )
+                        )
+                        positions
+
+
+removeSurrondingArea : Int -> List Position -> List Position
+
+
+randomizePositions : List Ship -> Random.Generator (List Position)
 randomizePositions ships =
     let
         sizes =
@@ -174,7 +289,7 @@ randomizePositions ships =
     Random.Extra.sequence (List.map mapToRandomTuplePair sizes)
 
 
-mapToSizeTuple : Ship -> ( Int, Int )
+mapToSizeTuple : Ship -> Position
 mapToSizeTuple ship =
     if ship.orientation == Horizontal then
         ( ship.size, 0 )
@@ -183,7 +298,7 @@ mapToSizeTuple ship =
         ( 0, ship.size )
 
 
-mapToRandomTuplePair : ( Int, Int ) -> Random.Generator ( Int, Int )
+mapToRandomTuplePair : Position -> Random.Generator Position
 mapToRandomTuplePair tuple =
     let
         cols =
@@ -210,12 +325,12 @@ pickFirstDigit d flag =
     modBy 10 (2 * d + flag)
 
 
-updatePositions : List ( Int, Int ) -> List Ship -> List Ship
+updatePositions : List Position -> List Ship -> List Ship
 updatePositions positions ships =
     List.map2 updatePosition positions ships
 
 
-updatePosition : ( Int, Int ) -> Ship -> Ship
+updatePosition : Position -> Ship -> Ship
 updatePosition point ship =
     let
         x =
