@@ -1,5 +1,6 @@
 module Main exposing (main)
 
+import Bitwise
 import Browser
 import Debug
 import Html exposing (..)
@@ -190,9 +191,21 @@ updateOrientation orientations ships =
         ships
 
 
+
+-- Not only removing positions by size to prevent overflow, but also remove -1 positions
+
+
 choosePositions : List Ship -> List Position -> Random.Generator (List Position)
 choosePositions ships availablePositions =
-    Random.List.choose (filterPositionsByShip (List.head ships) availablePositions)
+    let
+        ship =
+            List.head ships
+    in
+    Random.List.choose
+        (List.filter
+            (\n -> Tuple.first n > -1)
+            (dropPositionsByOrientation ship availablePositions)
+        )
         |> Random.andThen
             (\res ->
                 let
@@ -214,13 +227,13 @@ choosePositions ships availablePositions =
                                 )
                                 (choosePositions
                                     (List.drop 1 ships)
-                                    (List.Extra.remove pos availablePositions)
+                                    (dropShipPosition ship pos availablePositions)
                                 )
             )
 
 
-filterPositionsByShip : Maybe Ship -> List Position -> List Position
-filterPositionsByShip maybeShip positions =
+dropPositionsByOrientation : Maybe Ship -> List Position -> List Position
+dropPositionsByOrientation maybeShip positions =
     case maybeShip of
         Nothing ->
             positions
@@ -228,56 +241,121 @@ filterPositionsByShip maybeShip positions =
         Just ship ->
             case ship.orientation of
                 Horizontal ->
-                    Debug.log "Horizontal" (List.filter (filterHorizontal ship.size) positions)
+                    List.filter (byHorizontal ship.size) positions
 
                 Vertical ->
-                    Debug.log "Vertical" (List.filter (filterVertical ship.size) positions)
+                    List.filter (byVertical ship.size) positions
 
 
-filterHorizontal : Int -> Position -> Bool
-filterHorizontal size position =
+byHorizontal : Int -> Position -> Bool
+byHorizontal size position =
     size >= Tuple.first position
 
 
-filterVertical : Int -> Position -> Bool
-filterVertical size position =
+byVertical : Int -> Position -> Bool
+byVertical size position =
     size >= Tuple.second position
 
 
-removeShipPosition : ship -> Position -> List Position -> List Position
-removeShipPosition ship pos positions =
-    let
-        maybeIndex =
-            List.Extra.elemIndex pos
-    in
-    case maybeIndex of
+
+-- Check if there are -1 values
+-- if so, that means a ship is present therefore proceed to prevent those positions being selected according to the current ship size
+-- else, remove current ship position
+
+
+dropShipPosition : Maybe Ship -> Position -> List Position -> List Position
+dropShipPosition maybeShip pos positions =
+    case maybeShip of
         Nothing ->
             positions
 
-        Just index ->
-            case ship.orientation of
-                Horizontal ->
-                    List.removeIfIndex
-                        (flip
-                            (List.member
-                                (List.range index ship.size)
+        Just ship ->
+            let
+                maybeIndex =
+                    Debug.log "INDEX" (List.Extra.elemIndex (Debug.log "POS" pos) positions)
+            in
+            case maybeIndex of
+                Nothing ->
+                    positions
+
+                Just index ->
+                    case ship.orientation of
+                        Vertical ->
+                            dropVerticalShip index pos ship positions
+
+                        Horizontal ->
+                            dropHorizontalShip index ship positions
+
+
+dropVerticalShip : Int -> Position -> Ship -> List Position -> List Position
+dropVerticalShip index pos ship positions =
+    let
+        x =
+            Tuple.first pos
+
+        y =
+            Tuple.second pos
+
+        topOffset =
+            Debug.log "top offset" (y // y)
+
+        bottomOffset =
+            Debug.log "bottom offset" ((y + ship.size - 1) // (maxCol - 1))
+
+        leftOffset =
+            Debug.log "left offset" ((x // x) * maxCol)
+
+        rightOffset =
+            Debug.log "right offset" ((*) (modBy maxCol (x + 1)) maxCol // (x + 1))
+    in
+    Debug.log "Vertical ship dropping"
+        (List.Extra.updateIfIndex
+            (\idx ->
+                List.member
+                    idx
+                    (Debug.log "Vertical indexes"
+                        (List.Extra.unique
+                            (List.concat
+                                [ List.range
+                                    (index - topOffset)
+                                    (index + (ship.size - bottomOffset))
+                                , List.range
+                                    (index - topOffset - leftOffset)
+                                    (index + (ship.size - bottomOffset) - leftOffset)
+                                , List.range
+                                    (index - topOffset + rightOffset)
+                                    (index + (ship.size - bottomOffset) + rightOffset)
+                                ]
                             )
                         )
-                        positions
+                    )
+            )
+            (\_ -> ( -1, -1 ))
+            positions
+        )
 
-                Vertical ->
-                    List.removeIfIndex
-                        (flip
-                            (List.member
-                                (List.map ((+) maxRow)
-                                    (List.repeat ship.size pos)
-                                )
-                            )
+
+dropHorizontalShip : Int -> Ship -> List Position -> List Position
+dropHorizontalShip index ship positions =
+    Debug.log "Horizontal ship dropping"
+        (List.Extra.updateIfIndex
+            (\idx ->
+                List.member
+                    idx
+                    (Debug.log "Horizontal indexes"
+                        (List.indexedMap
+                            (\i n -> n + maxRow * i)
+                            (List.repeat ship.size index)
                         )
-                        positions
+                    )
+            )
+            (\_ -> ( -1, -1 ))
+            positions
+        )
 
 
-removeSurrondingArea : Int -> List Position -> List Position
+
+-- removeSurrondingArea : Int -> List Position -> List Position
 
 
 randomizePositions : List Ship -> Random.Generator (List Position)
