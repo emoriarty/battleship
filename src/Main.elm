@@ -167,11 +167,21 @@ initShips =
     ]
 
 
+
+--    , Ship Cruiser 3 (Point 0 0) Vertical
+--   , Ship Submarine 3 (Point 0 0) Vertical
+--   , Ship Destroyer 2 (Point 0 0) Vertical
+
+
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
 randomizeOrientation ships =
-    Random.map
-        (\list -> List.map mapToOrientation list)
-        (Random.list (List.length ships) (Random.int 0 1))
+    Random.constant [ Horizontal, Horizontal, Horizontal, Horizontal, Horizontal ]
+
+
+
+--    Random.map
+--        (\list -> List.map mapToOrientation list)
+--        (Random.list (List.length ships) (Random.int 0 1))
 
 
 mapToOrientation : Int -> Orientation
@@ -198,97 +208,169 @@ updateOrientation orientations ships =
 choosePositions : List Ship -> List Position -> Random.Generator (List Position)
 choosePositions ships availablePositions =
     let
-        ship =
-            List.head ships
+        maybeShip =
+            List.head (Debug.log ">>> SHIPS" ships)
     in
-    Random.List.choose
-        (List.filter
-            (\n -> Tuple.first n > -1)
-            (dropPositionsByOrientation ship availablePositions)
-        )
-        |> Random.andThen
-            (\res ->
-                let
-                    maybePos =
-                        Tuple.first res
-                in
-                case maybePos of
-                    Nothing ->
-                        Random.constant [ ( -1, -1 ) ]
-
-                    Just pos ->
-                        if List.length ships == 0 then
-                            Random.constant [ pos ]
-
-                        else
-                            Random.map
-                                (\partialList ->
-                                    pos :: partialList
-                                )
-                                (choosePositions
-                                    (List.drop 1 ships)
-                                    (dropShipPosition ship pos availablePositions)
-                                )
-            )
-
-
-dropPositionsByOrientation : Maybe Ship -> List Position -> List Position
-dropPositionsByOrientation maybeShip positions =
     case maybeShip of
         Nothing ->
-            positions
+            Random.constant availablePositions
 
         Just ship ->
-            case ship.orientation of
-                Horizontal ->
-                    List.filter (byHorizontal ship.size) positions
+            Random.List.choose
+                (List.filter
+                    (\n -> Tuple.first n > -1)
+                    (Debug.log "Ships removed"
+                        (dropOverlapPositions
+                            ship
+                            (Debug.log "Boundaries removed" (dropBoundaries ship (Debug.log "Positions" availablePositions)))
+                        )
+                    )
+                )
+                |> Random.andThen
+                    (\res ->
+                        let
+                            maybePos =
+                                Tuple.first res
+                        in
+                        case maybePos of
+                            Nothing ->
+                                Random.constant [ ( -1, -1 ) ]
 
-                Vertical ->
-                    List.filter (byVertical ship.size) positions
+                            Just pos ->
+                                if List.length ships == 0 then
+                                    Random.constant [ pos ]
+
+                                else
+                                    Random.map
+                                        (\partialList ->
+                                            pos :: partialList
+                                        )
+                                        (choosePositions
+                                            (List.drop 1 ships)
+                                            (Debug.log "Place ship position" (placeShipPosition ship (Debug.log "Position" pos) availablePositions))
+                                        )
+                    )
 
 
-byHorizontal : Int -> Position -> Bool
-byHorizontal size position =
-    size >= Tuple.first position
+dropBoundaries : Ship -> List Position -> List Position
+dropBoundaries ship positions =
+    case ship.orientation of
+        Horizontal ->
+            List.Extra.removeIfIndex
+                (byHorizontal ship.size)
+                positions
+
+        Vertical ->
+            List.filter (byVertical ship.size) positions
+
+
+byHorizontal : Int -> Int -> Bool
+byHorizontal size index =
+    (maxRow * maxCol) - (size - 1) * maxCol - 1 < index
 
 
 byVertical : Int -> Position -> Bool
 byVertical size position =
-    size >= Tuple.second position
+    size - maxRow >= Tuple.second position
 
 
+dropOverlapPositions : Ship -> List Position -> List Position
+dropOverlapPositions ship positions =
+    let
+        indices =
+            Debug.log "ship indices" (List.Extra.elemIndices ( -1, -1 ) positions)
+    in
+    case ship.orientation of
+        Horizontal ->
+            List.Extra.filterNot
+                ((==) ( -1, -1 ))
+                (Debug.log
+                    "Horizontal overlap dropping"
+                    (List.Extra.updateIfIndex
+                        (\idx ->
+                            List.member
+                                idx
+                                (Debug.log "horizontalOverlapIndices"
+                                    (List.Extra.unique
+                                        (List.concat
+                                            (List.map
+                                                (horizontalOverlapIndices ship.size)
+                                                indices
+                                            )
+                                        )
+                                    )
+                                )
+                        )
+                        (\_ -> ( -1, -1 ))
+                        positions
+                    )
+                )
 
--- Check if there are -1 values
--- if so, that means a ship is present therefore proceed to prevent those positions being selected according to the current ship size
--- else, remove current ship position
+        Vertical ->
+            List.Extra.filterNot
+                ((==) ( -1, -1 ))
+                (Debug.log "Vertical overlap dropping"
+                    (List.Extra.updateIfIndex
+                        (\idx ->
+                            List.member
+                                idx
+                                (List.Extra.unique
+                                    (List.concat
+                                        (List.map
+                                            (filterVerticalOverlapPositions ship)
+                                            indices
+                                        )
+                                    )
+                                )
+                        )
+                        (\_ -> ( -1, -1 ))
+                        positions
+                    )
+                )
 
 
-dropShipPosition : Maybe Ship -> Position -> List Position -> List Position
-dropShipPosition maybeShip pos positions =
-    case maybeShip of
+horizontalOverlapIndices : Int -> Int -> List Int
+horizontalOverlapIndices size index =
+    List.indexedMap
+        (\i n -> n - (maxCol * i))
+        (List.repeat size index)
+
+
+filterVerticalOverlapPositions : Ship -> Int -> List Int
+filterVerticalOverlapPositions ship idx =
+    let
+        col =
+            idx // maxRow
+    in
+    List.filter
+        ((>) 0)
+        (List.map
+            ((-) maxRow)
+            (List.repeat idx ship.size)
+        )
+
+
+placeShipPosition : Ship -> Position -> List Position -> List Position
+placeShipPosition ship pos positions =
+    let
+        maybeIndex =
+            List.Extra.elemIndex pos positions
+    in
+    case maybeIndex of
         Nothing ->
             positions
 
-        Just ship ->
-            let
-                maybeIndex =
-                    Debug.log "INDEX" (List.Extra.elemIndex (Debug.log "POS" pos) positions)
-            in
-            case maybeIndex of
-                Nothing ->
-                    positions
+        Just index ->
+            case ship.orientation of
+                Vertical ->
+                    placeVerticalShip index pos ship positions
 
-                Just index ->
-                    case ship.orientation of
-                        Vertical ->
-                            dropVerticalShip index pos ship positions
-
-                        Horizontal ->
-                            dropHorizontalShip index ship positions
+                Horizontal ->
+                    placeHorizontalShip index ship.size positions
 
 
-dropVerticalShip : Int -> Position -> Ship -> List Position -> List Position
-dropVerticalShip index pos ship positions =
+placeVerticalShip : Int -> Position -> Ship -> List Position -> List Position
+placeVerticalShip index pos ship positions =
     let
         x =
             Tuple.first pos
@@ -297,61 +379,56 @@ dropVerticalShip index pos ship positions =
             Tuple.second pos
 
         topOffset =
-            Debug.log "top offset" (y // y)
+            y // y
 
         bottomOffset =
-            Debug.log "bottom offset" ((y + ship.size - 1) // (maxCol - 1))
+            (y + ship.size - 1) // (maxCol - 1)
 
         leftOffset =
-            Debug.log "left offset" ((x // x) * maxCol)
+            (x // x) * maxCol
 
         rightOffset =
-            Debug.log "right offset" ((*) (modBy maxCol (x + 1)) maxCol // (x + 1))
+            (*) (modBy maxCol (x + 1)) maxCol // (x + 1)
     in
-    Debug.log "Vertical ship dropping"
-        (List.Extra.updateIfIndex
-            (\idx ->
-                List.member
-                    idx
-                    (Debug.log "Vertical indexes"
-                        (List.Extra.unique
-                            (List.concat
-                                [ List.range
-                                    (index - topOffset)
-                                    (index + (ship.size - bottomOffset))
-                                , List.range
-                                    (index - topOffset - leftOffset)
-                                    (index + (ship.size - bottomOffset) - leftOffset)
-                                , List.range
-                                    (index - topOffset + rightOffset)
-                                    (index + (ship.size - bottomOffset) + rightOffset)
-                                ]
-                            )
-                        )
+    List.Extra.updateIfIndex
+        (\idx ->
+            List.member
+                idx
+                (List.Extra.unique
+                    (List.concat
+                        [ List.range
+                            (index - topOffset)
+                            (index + (ship.size - bottomOffset))
+
+                        --                        , List.range
+                        --                           (index - topOffset - leftOffset)
+                        --                          (index + (ship.size - bottomOffset) - leftOffset)
+                        --                      , List.range
+                        --                         (index - topOffset + rightOffset)
+                        --                         (index + (ship.size - bottomOffset) + rightOffset)
+                        ]
                     )
-            )
-            (\_ -> ( -1, -1 ))
-            positions
+                )
         )
+        (\_ -> ( -1, -1 ))
+        positions
 
 
-dropHorizontalShip : Int -> Ship -> List Position -> List Position
-dropHorizontalShip index ship positions =
-    Debug.log "Horizontal ship dropping"
-        (List.Extra.updateIfIndex
-            (\idx ->
-                List.member
-                    idx
-                    (Debug.log "Horizontal indexes"
-                        (List.indexedMap
-                            (\i n -> n + maxRow * i)
-                            (List.repeat ship.size index)
-                        )
-                    )
-            )
-            (\_ -> ( -1, -1 ))
-            positions
+placeHorizontalShip : Int -> Int -> List Position -> List Position
+placeHorizontalShip index size positions =
+    List.Extra.updateIfIndex
+        (\idx ->
+            List.member idx (horizontalIndices index size)
         )
+        (\_ -> ( -1, -1 ))
+        positions
+
+
+horizontalIndices : Int -> Int -> List Int
+horizontalIndices index size =
+    List.indexedMap
+        (\i n -> n + (maxCol * i))
+        (List.repeat size index)
 
 
 
