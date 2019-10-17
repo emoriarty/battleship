@@ -30,6 +30,18 @@ maxRow =
     10
 
 
+takenPos =
+    ( -1, -1 )
+
+
+boundaryPos =
+    ( -2, -2 )
+
+
+overlapPos =
+    ( -3, -3 )
+
+
 
 -- MAIN
 
@@ -175,7 +187,7 @@ initShips =
 
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
 randomizeOrientation ships =
-    Random.constant [ Horizontal, Horizontal, Horizontal, Horizontal, Horizontal ]
+    Random.constant [ Vertical, Vertical ]
 
 
 
@@ -234,7 +246,7 @@ choosePositions ships availablePositions =
                         in
                         case maybePos of
                             Nothing ->
-                                Random.constant [ ( -1, -1 ) ]
+                                Random.constant [ takenPos ]
 
                             Just pos ->
                                 if List.length ships == 0 then
@@ -256,12 +268,16 @@ dropBoundaries : Ship -> List Position -> List Position
 dropBoundaries ship positions =
     case ship.orientation of
         Horizontal ->
-            List.Extra.removeIfIndex
+            List.Extra.updateIfIndex
                 (byHorizontal ship.size)
+                (\_ -> boundaryPos)
                 positions
 
         Vertical ->
-            List.filter (byVertical ship.size) positions
+            List.Extra.updateIfIndex
+                (byVertical ship.size)
+                (\_ -> boundaryPos)
+                positions
 
 
 byHorizontal : Int -> Int -> Bool
@@ -269,21 +285,21 @@ byHorizontal size index =
     (maxRow * maxCol) - (size - 1) * maxCol - 1 < index
 
 
-byVertical : Int -> Position -> Bool
-byVertical size position =
-    size - maxRow >= Tuple.second position
+byVertical : Int -> Int -> Bool
+byVertical size index =
+    (maxRow - modBy 10 index) < size
 
 
 dropOverlapPositions : Ship -> List Position -> List Position
 dropOverlapPositions ship positions =
     let
         indices =
-            Debug.log "ship indices" (List.Extra.elemIndices ( -1, -1 ) positions)
+            Debug.log "ship indices" (List.Extra.elemIndices takenPos positions)
     in
     case ship.orientation of
         Horizontal ->
             List.Extra.filterNot
-                ((==) ( -1, -1 ))
+                ((==) takenPos)
                 (Debug.log
                     "Horizontal overlap dropping"
                     (List.Extra.updateIfIndex
@@ -291,62 +307,59 @@ dropOverlapPositions ship positions =
                             List.member
                                 idx
                                 (Debug.log "horizontalOverlapIndices"
-                                    (List.Extra.unique
-                                        (List.concat
-                                            (List.map
-                                                (horizontalOverlapIndices ship.size)
-                                                indices
-                                            )
-                                        )
-                                    )
+                                    (horizontalOverlapIndices ship.size indices)
                                 )
                         )
-                        (\_ -> ( -1, -1 ))
+                        (\_ -> overlapPos)
                         positions
                     )
                 )
 
         Vertical ->
             List.Extra.filterNot
-                ((==) ( -1, -1 ))
+                ((==) takenPos)
                 (Debug.log "Vertical overlap dropping"
                     (List.Extra.updateIfIndex
                         (\idx ->
                             List.member
                                 idx
-                                (List.Extra.unique
-                                    (List.concat
-                                        (List.map
-                                            (filterVerticalOverlapPositions ship)
-                                            indices
-                                        )
-                                    )
+                                (Debug.log "verticalOverlapIndices"
+                                    (verticalOverlapIndices ship.size indices)
                                 )
                         )
-                        (\_ -> ( -1, -1 ))
+                        (\_ -> overlapPos)
                         positions
                     )
                 )
 
 
-horizontalOverlapIndices : Int -> Int -> List Int
-horizontalOverlapIndices size index =
-    List.indexedMap
-        (\i n -> n - (maxCol * i))
-        (List.repeat size index)
+horizontalOverlapIndices : Int -> List Int -> List Int
+horizontalOverlapIndices size indices =
+    List.Extra.unique
+        (List.concat
+            (List.map
+                (\index ->
+                    List.indexedMap
+                        (\i n -> n - (maxCol * i))
+                        (List.repeat size index)
+                )
+                indices
+            )
+        )
 
 
-filterVerticalOverlapPositions : Ship -> Int -> List Int
-filterVerticalOverlapPositions ship idx =
-    let
-        col =
-            idx // maxRow
-    in
-    List.filter
-        ((>) 0)
-        (List.map
-            ((-) maxRow)
-            (List.repeat idx ship.size)
+verticalOverlapIndices : Int -> List Int -> List Int
+verticalOverlapIndices size indices =
+    List.Extra.unique
+        (List.concat
+            (List.map
+                (\index ->
+                    List.indexedMap
+                        (\i n -> n - i)
+                        (List.repeat size index)
+                )
+                indices
+            )
         )
 
 
@@ -410,7 +423,7 @@ placeVerticalShip index pos ship positions =
                     )
                 )
         )
-        (\_ -> ( -1, -1 ))
+        (\_ -> takenPos)
         positions
 
 
@@ -420,7 +433,7 @@ placeHorizontalShip index size positions =
         (\idx ->
             List.member idx (horizontalIndices index size)
         )
-        (\_ -> ( -1, -1 ))
+        (\_ -> takenPos)
         positions
 
 
@@ -537,9 +550,16 @@ viewGrid : Model -> List (Html.Attribute msg) -> List (Svg.Svg msg) -> Html msg
 viewGrid model attrs nodes =
     Svg.svg
         (List.concat
-            [ [ Svg.Attributes.width "420"
-              , Svg.Attributes.height "420"
-              , Svg.Attributes.viewBox "0 0 400 400"
+            [ [ Svg.Attributes.width (String.fromInt (maxCol * boxSize + 20))
+              , Svg.Attributes.height (String.fromInt (maxRow * boxSize + 20))
+              , Svg.Attributes.viewBox
+                    (String.join
+                        " "
+                        [ "0 0"
+                        , String.fromInt (maxCol * boxSize)
+                        , String.fromInt (maxRow * boxSize)
+                        ]
+                    )
               ]
             , attrs
             ]
@@ -602,8 +622,8 @@ box =
     Svg.rect
         [ Svg.Attributes.x "0"
         , Svg.Attributes.y "0"
-        , Svg.Attributes.width "400"
-        , Svg.Attributes.height "400"
+        , Svg.Attributes.width (String.fromInt (maxCol * boxSize))
+        , Svg.Attributes.height (String.fromInt (maxRow * boxSize))
         , Svg.Attributes.fill "transparent"
         , Svg.Attributes.stroke "black"
         , Svg.Attributes.strokeWidth "5px"
