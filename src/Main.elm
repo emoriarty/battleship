@@ -187,13 +187,9 @@ initShips =
 
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
 randomizeOrientation ships =
-    Random.constant [ Vertical, Vertical ]
-
-
-
---    Random.map
---        (\list -> List.map mapToOrientation list)
---        (Random.list (List.length ships) (Random.int 0 1))
+    Random.map
+        (\list -> List.map mapToOrientation list)
+        (Random.list (List.length ships) (Random.int 0 1))
 
 
 mapToOrientation : Int -> Orientation
@@ -232,9 +228,9 @@ choosePositions ships availablePositions =
                 (List.filter
                     (\n -> Tuple.first n > -1)
                     (Debug.log "Ships removed"
-                        (dropOverlapPositions
+                        (placeBoundaries
                             ship
-                            (Debug.log "Boundaries removed" (dropBoundaries ship (Debug.log "Positions" availablePositions)))
+                            (Debug.log "Boundaries removed" (placeOverlapPositions ship (Debug.log "Positions" availablePositions)))
                         )
                     )
                 )
@@ -264,8 +260,8 @@ choosePositions ships availablePositions =
                     )
 
 
-dropBoundaries : Ship -> List Position -> List Position
-dropBoundaries ship positions =
+placeBoundaries : Ship -> List Position -> List Position
+placeBoundaries ship positions =
     case ship.orientation of
         Horizontal ->
             List.Extra.updateIfIndex
@@ -290,8 +286,8 @@ byVertical size index =
     (maxRow - modBy 10 index) < size
 
 
-dropOverlapPositions : Ship -> List Position -> List Position
-dropOverlapPositions ship positions =
+placeOverlapPositions : Ship -> List Position -> List Position
+placeOverlapPositions ship positions =
     let
         indices =
             Debug.log "ship indices" (List.Extra.elemIndices takenPos positions)
@@ -335,30 +331,36 @@ dropOverlapPositions ship positions =
 
 horizontalOverlapIndices : Int -> List Int -> List Int
 horizontalOverlapIndices size indices =
-    List.Extra.unique
-        (List.concat
-            (List.map
-                (\index ->
-                    List.indexedMap
-                        (\i n -> n - (maxCol * i))
-                        (List.repeat size index)
+    List.Extra.filterNot
+        (\idx -> List.member idx indices)
+        (List.Extra.unique
+            (List.concat
+                (List.map
+                    (\index ->
+                        List.indexedMap
+                            (\i n -> n - (maxCol * i))
+                            (List.repeat size index)
+                    )
+                    indices
                 )
-                indices
             )
         )
 
 
 verticalOverlapIndices : Int -> List Int -> List Int
 verticalOverlapIndices size indices =
-    List.Extra.unique
-        (List.concat
-            (List.map
-                (\index ->
-                    List.indexedMap
-                        (\i n -> n - i)
-                        (List.repeat size index)
+    List.Extra.filterNot
+        (\idx -> List.member idx indices)
+        (List.Extra.unique
+            (List.concat
+                (List.map
+                    (\index ->
+                        List.indexedMap
+                            (\i n -> n - i)
+                            (List.repeat size index)
+                    )
+                    indices
                 )
-                indices
             )
         )
 
@@ -376,52 +378,17 @@ placeShipPosition ship pos positions =
         Just index ->
             case ship.orientation of
                 Vertical ->
-                    placeVerticalShip index pos ship positions
+                    placeVerticalShip index ship.size positions
 
                 Horizontal ->
                     placeHorizontalShip index ship.size positions
 
 
-placeVerticalShip : Int -> Position -> Ship -> List Position -> List Position
-placeVerticalShip index pos ship positions =
-    let
-        x =
-            Tuple.first pos
-
-        y =
-            Tuple.second pos
-
-        topOffset =
-            y // y
-
-        bottomOffset =
-            (y + ship.size - 1) // (maxCol - 1)
-
-        leftOffset =
-            (x // x) * maxCol
-
-        rightOffset =
-            (*) (modBy maxCol (x + 1)) maxCol // (x + 1)
-    in
+placeVerticalShip : Int -> Int -> List Position -> List Position
+placeVerticalShip index size positions =
     List.Extra.updateIfIndex
         (\idx ->
-            List.member
-                idx
-                (List.Extra.unique
-                    (List.concat
-                        [ List.range
-                            (index - topOffset)
-                            (index + (ship.size - bottomOffset))
-
-                        --                        , List.range
-                        --                           (index - topOffset - leftOffset)
-                        --                          (index + (ship.size - bottomOffset) - leftOffset)
-                        --                      , List.range
-                        --                         (index - topOffset + rightOffset)
-                        --                         (index + (ship.size - bottomOffset) + rightOffset)
-                        ]
-                    )
-                )
+            List.member idx (verticalIndices index size)
         )
         (\_ -> takenPos)
         positions
@@ -441,6 +408,13 @@ horizontalIndices : Int -> Int -> List Int
 horizontalIndices index size =
     List.indexedMap
         (\i n -> n + (maxCol * i))
+        (List.repeat size index)
+
+
+verticalIndices : Int -> Int -> List Int
+verticalIndices index size =
+    List.indexedMap
+        (\i n -> n + i)
         (List.repeat size index)
 
 
