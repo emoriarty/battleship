@@ -68,7 +68,7 @@ type alias Model =
 type alias Ship =
     { class : ShipType
     , size : Int
-    , position : Point
+    , position : Position
     , orientation : Orientation
     }
 
@@ -88,10 +88,6 @@ type ShipType
 type Orientation
     = Horizontal
     | Vertical
-
-
-type alias Point =
-    { x : Int, y : Int }
 
 
 
@@ -171,18 +167,24 @@ fillGrid index length =
 
 initShips : List Ship
 initShips =
-    [ Ship Carrier 5 (Point 0 0) Vertical
-    , Ship Battleship 4 (Point 0 0) Vertical
-    , Ship Cruiser 3 (Point 0 0) Vertical
-    , Ship Submarine 3 (Point 0 0) Vertical
-    , Ship Destroyer 2 (Point 0 0) Vertical
+    [ Ship Carrier 5 ( 0, 0 ) Vertical
+    , Ship Battleship 4 ( 0, 0 ) Vertical
+    , Ship Cruiser 3 ( 0, 0 ) Vertical
+    , Ship Submarine 3 ( 0, 0 ) Vertical
+    , Ship Destroyer 2 ( 0, 0 ) Vertical
     ]
 
 
+updateOrientation : List Orientation -> List Ship -> List Ship
+updateOrientation orientations ships =
+    List.map2
+        (\orientation ship -> { ship | orientation = orientation })
+        orientations
+        ships
 
---    , Ship Cruiser 3 (Point 0 0) Vertical
---   , Ship Submarine 3 (Point 0 0) Vertical
---   , Ship Destroyer 2 (Point 0 0) Vertical
+
+
+-- SHIP RANDOM POSITIONING FUNCTIONS
 
 
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
@@ -201,23 +203,11 @@ mapToOrientation n =
         Vertical
 
 
-updateOrientation : List Orientation -> List Ship -> List Ship
-updateOrientation orientations ships =
-    List.map2
-        (\orientation ship -> { ship | orientation = orientation })
-        orientations
-        ships
-
-
-
--- Not only removing positions by size to prevent overflow, but also remove -1 positions
-
-
 choosePositions : List Ship -> List Position -> Random.Generator (List Position)
 choosePositions ships availablePositions =
     let
         maybeShip =
-            List.head (Debug.log ">>> SHIPS" ships)
+            List.head ships
     in
     case maybeShip of
         Nothing ->
@@ -227,11 +217,9 @@ choosePositions ships availablePositions =
             Random.List.choose
                 (List.filter
                     (\n -> Tuple.first n > -1)
-                    (Debug.log "Ships removed"
-                        (placeBoundaries
-                            ship
-                            (Debug.log "Boundaries removed" (placeOverlapPositions ship (Debug.log "Positions" availablePositions)))
-                        )
+                    (placeBoundaries
+                        ship
+                        (placeOverlapPositions ship availablePositions)
                     )
                 )
                 |> Random.andThen
@@ -255,7 +243,7 @@ choosePositions ships availablePositions =
                                         )
                                         (choosePositions
                                             (List.drop 1 ships)
-                                            (Debug.log "Place ship position" (placeShipPosition ship (Debug.log "Position" pos) availablePositions))
+                                            (placeShipPosition ship pos availablePositions)
                                         )
                     )
 
@@ -290,43 +278,28 @@ placeOverlapPositions : Ship -> List Position -> List Position
 placeOverlapPositions ship positions =
     let
         indices =
-            Debug.log "ship indices" (List.Extra.elemIndices takenPos positions)
+            List.Extra.elemIndices takenPos positions
     in
     case ship.orientation of
         Horizontal ->
-            List.Extra.filterNot
-                ((==) takenPos)
-                (Debug.log
-                    "Horizontal overlap dropping"
-                    (List.Extra.updateIfIndex
-                        (\idx ->
-                            List.member
-                                idx
-                                (Debug.log "horizontalOverlapIndices"
-                                    (horizontalOverlapIndices ship.size indices)
-                                )
-                        )
-                        (\_ -> overlapPos)
-                        positions
-                    )
+            List.Extra.updateIfIndex
+                (\idx ->
+                    List.member
+                        idx
+                        (horizontalOverlapIndices ship.size indices)
                 )
+                (\_ -> overlapPos)
+                positions
 
         Vertical ->
-            List.Extra.filterNot
-                ((==) takenPos)
-                (Debug.log "Vertical overlap dropping"
-                    (List.Extra.updateIfIndex
-                        (\idx ->
-                            List.member
-                                idx
-                                (Debug.log "verticalOverlapIndices"
-                                    (verticalOverlapIndices ship.size indices)
-                                )
-                        )
-                        (\_ -> overlapPos)
-                        positions
-                    )
+            List.Extra.updateIfIndex
+                (\idx ->
+                    List.member
+                        idx
+                        (verticalOverlapIndices ship.size indices)
                 )
+                (\_ -> overlapPos)
+                positions
 
 
 horizontalOverlapIndices : Int -> List Int -> List Int
@@ -418,10 +391,6 @@ verticalIndices index size =
         (List.repeat size index)
 
 
-
--- removeSurrondingArea : Int -> List Position -> List Position
-
-
 randomizePositions : List Ship -> Random.Generator (List Position)
 randomizePositions ships =
     let
@@ -473,15 +442,8 @@ updatePositions positions ships =
 
 
 updatePosition : Position -> Ship -> Ship
-updatePosition point ship =
-    let
-        x =
-            Tuple.first point
-
-        y =
-            Tuple.second point
-    in
-    { ship | position = Point x y }
+updatePosition pos ship =
+    { ship | position = pos }
 
 
 
@@ -575,9 +537,9 @@ svgShip ship =
     Svg.g []
         [ Svg.rect
             [ Svg.Attributes.x
-                (String.fromInt (ship.position.x * boxSize))
+                (String.fromInt (Tuple.first ship.position * boxSize))
             , Svg.Attributes.y
-                (String.fromInt (ship.position.y * boxSize))
+                (String.fromInt (Tuple.second ship.position * boxSize))
             , Svg.Attributes.width
                 (String.fromInt (shipSize Horizontal ship))
             , Svg.Attributes.height
@@ -607,173 +569,56 @@ box =
 
 verticalLines : Svg.Svg msg
 verticalLines =
+    let
+        lines =
+            (boxSize * maxRow) // boxSize
+    in
     Svg.g []
-        [ Svg.line
-            [ Svg.Attributes.x1 "40"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "40"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "80"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "80"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "120"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "120"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "160"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "160"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "200"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "200"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "240"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "240"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "280"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "280"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "320"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "320"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.x1 "360"
-            , Svg.Attributes.y1 "0"
-            , Svg.Attributes.x2 "360"
-            , Svg.Attributes.y1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        ]
+        (List.map
+            makeVerticalLine
+            (List.range 1 lines)
+        )
 
 
 horizontalLines : Svg.Svg msg
 horizontalLines =
+    let
+        lines =
+            (boxSize * maxCol) // boxSize
+    in
     Svg.g []
-        [ Svg.line
-            [ Svg.Attributes.y1 "40"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "40"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "80"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "80"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "120"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "120"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "160"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "160"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "200"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "200"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "240"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "240"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "280"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "280"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "320"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "320"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
-        , Svg.line
-            [ Svg.Attributes.y1 "360"
-            , Svg.Attributes.x1 "0"
-            , Svg.Attributes.y2 "360"
-            , Svg.Attributes.x1 "400"
-            , Svg.Attributes.stroke "black"
-            , Svg.Attributes.strokeWidth "1px"
-            ]
-            []
+        (List.map
+            makeHorizontalLine
+            (List.range 1 lines)
+        )
+
+
+makeVerticalLine : Int -> Svg.Svg msg
+makeVerticalLine pos =
+    let
+        x =
+            pos * boxSize
+    in
+    makeLine x 0 x (boxSize * maxRow)
+
+
+makeHorizontalLine : Int -> Svg.Svg msg
+makeHorizontalLine pos =
+    let
+        y =
+            pos * boxSize
+    in
+    makeLine 0 y (boxSize * maxCol) y
+
+
+makeLine : Int -> Int -> Int -> Int -> Svg.Svg msg
+makeLine x1 y1 x2 y2 =
+    Svg.line
+        [ Svg.Attributes.x1 (String.fromInt x1)
+        , Svg.Attributes.y1 (String.fromInt y1)
+        , Svg.Attributes.x2 (String.fromInt x2)
+        , Svg.Attributes.y2 (String.fromInt y2)
+        , Svg.Attributes.stroke "black"
+        , Svg.Attributes.strokeWidth "1px"
         ]
+        []
