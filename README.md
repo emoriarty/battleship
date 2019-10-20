@@ -2,6 +2,12 @@
 
 ## Random Positioning
 
+To facilitate the game to the player, it helps to establish a game 
+configuration right from the beginning. The player is able to do any 
+modification with the starting setup or just play along inmediatly. That's 
+up to her/him. The important fact is the game can be played in less than one 
+or two actions.
+
 All ships must be placed randomly in a predefined layout. To prevent 
 ships overflowing the grid, ships positioning algorithm must take into account 
 the invisible boundaries given by ship size and orientation. Thus, after the 
@@ -20,6 +26,33 @@ the same orientation colliding in the same line is not actually a good strategy,
 it is just so easy following that sinking line.
 
 ## Custom Positioning
+
+I think the best way to move ships is to pick them up and drag them around. 
+In principle this is done for PCs, but in addition, except by some minor 
+differences should also work well for portable devices.
+
+Like random positioning, ships cannot overlap other ships, nor leave the 
+layout. Therefore, the same technique used to find random positions can be 
+used to avoid overlapping and placing ships outside the grid: if the new 
+position is negative, it acts like a wall.
+
+To drag ships, perhaps it can be done with a shaded ship following the 
+selected one. Another way can simply be fitting the dragged ship onto new box 
+while moving. I still have to decide it what fits better.
+
+Another critical point is to change orientation. I think the best approach is 
+to click on the ship and if it is enough space then turn around clockwise. In 
+case cannot be turned, a shaking animation with a buzzing sound should warn 
+the player. Perhaps the animation can be accompanied by a color change. I 
+think this kind of warning technique can be used in others forbidden 
+situations: like banging with the grid borders or against another ship.
+
+## Peer Communication
+
+Because no server is desired for the gameplay, perhaps I can make use of the 
+WebRTC data channel.
+
+**Pending Research**.
 
 ## TODO
 * [ ] __[Random Positioning]__: prevent ships with the same orientation being placed in the 
