@@ -4,12 +4,13 @@ import Bitwise
 import Browser
 import Debug
 import Html exposing (..)
-import Html.Attributes exposing (style)
+import Html.Attributes exposing (draggable, style)
 import Html.Events exposing (onClick)
 import List.Extra
 import Random
 import Random.Extra
 import Random.List
+import Ship
 import Svg
 import Svg.Attributes
 
@@ -30,18 +31,6 @@ maxRow =
     10
 
 
-takenPos =
-    ( -1, -1 )
-
-
-boundaryPos =
-    ( -2, -2 )
-
-
-overlapPos =
-    ( -3, -3 )
-
-
 
 -- MAIN
 
@@ -60,34 +49,9 @@ main =
 
 
 type alias Model =
-    { ships : List Ship
-    , availablePositions : List (List Position)
+    { ships : List Ship.Ship
+    , availablePositions : List (List Ship.Position)
     }
-
-
-type alias Ship =
-    { class : ShipType
-    , size : Int
-    , position : Position
-    , orientation : Orientation
-    }
-
-
-type alias Position =
-    ( Int, Int )
-
-
-type ShipType
-    = Destroyer
-    | Submarine
-    | Cruiser
-    | Battleship
-    | Carrier
-
-
-type Orientation
-    = Horizontal
-    | Vertical
 
 
 
@@ -110,8 +74,8 @@ type Msg
     | Start
     | SetOrientation
     | SetPosition
-    | UpdateOrientation (List Orientation)
-    | UpdatePosition (List Position)
+    | UpdateOrientation (List Ship.Orientation)
+    | UpdatePosition (List Ship.Position)
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -128,7 +92,7 @@ update msg model =
         SetOrientation ->
             ( model
             , Random.generate UpdateOrientation
-                (randomizeOrientation model.ships)
+                (Ship.randomizeOrientation model.ships)
             )
 
         UpdateOrientation orientations ->
@@ -139,11 +103,11 @@ update msg model =
         SetPosition ->
             ( model
             , Random.generate UpdatePosition
-                (choosePositions model.ships (Debug.log "list" (List.concat model.availablePositions)))
+                (Ship.choosePositions maxCol maxRow model.ships (List.concat model.availablePositions))
             )
 
         UpdatePosition positions ->
-            ( { model | ships = updatePositions (Debug.log "positions" positions) model.ships }
+            ( { model | ships = updatePositions positions model.ships }
             , Cmd.none
             )
 
@@ -152,30 +116,30 @@ update msg model =
 -- FUNCTIONS
 
 
-initGrid : Int -> Int -> List (List Position)
+initGrid : Int -> Int -> List (List Ship.Position)
 initGrid rows cols =
     List.indexedMap fillGrid
         (List.repeat rows cols)
 
 
-fillGrid : Int -> Int -> List Position
+fillGrid : Int -> Int -> List Ship.Position
 fillGrid index length =
     List.map
         (Tuple.pair index)
         (List.range 0 (length - 1))
 
 
-initShips : List Ship
+initShips : List Ship.Ship
 initShips =
-    [ Ship Carrier 5 ( 0, 0 ) Vertical
-    , Ship Battleship 4 ( 0, 0 ) Vertical
-    , Ship Cruiser 3 ( 0, 0 ) Vertical
-    , Ship Submarine 3 ( 0, 0 ) Vertical
-    , Ship Destroyer 2 ( 0, 0 ) Vertical
+    [ Ship.Ship Ship.Carrier 5 ( 0, 0 ) Ship.Vertical
+    , Ship.Ship Ship.Battleship 4 ( 0, 0 ) Ship.Vertical
+    , Ship.Ship Ship.Cruiser 3 ( 0, 0 ) Ship.Vertical
+    , Ship.Ship Ship.Submarine 3 ( 0, 0 ) Ship.Vertical
+    , Ship.Ship Ship.Destroyer 2 ( 0, 0 ) Ship.Vertical
     ]
 
 
-updateOrientation : List Orientation -> List Ship -> List Ship
+updateOrientation : List Ship.Orientation -> List Ship.Ship -> List Ship.Ship
 updateOrientation orientations ships =
     List.map2
         (\orientation ship -> { ship | orientation = orientation })
@@ -183,265 +147,12 @@ updateOrientation orientations ships =
         ships
 
 
-
--- SHIP RANDOM POSITIONING FUNCTIONS
-
-
-randomizeOrientation : List Ship -> Random.Generator (List Orientation)
-randomizeOrientation ships =
-    Random.map
-        (\list -> List.map mapToOrientation list)
-        (Random.list (List.length ships) (Random.int 0 1))
-
-
-mapToOrientation : Int -> Orientation
-mapToOrientation n =
-    if n == 0 then
-        Horizontal
-
-    else
-        Vertical
-
-
-choosePositions : List Ship -> List Position -> Random.Generator (List Position)
-choosePositions ships availablePositions =
-    let
-        maybeShip =
-            List.head ships
-    in
-    case maybeShip of
-        Nothing ->
-            Random.constant availablePositions
-
-        Just ship ->
-            Random.List.choose
-                (List.filter
-                    (\n -> Tuple.first n > -1)
-                    (placeBoundaries
-                        ship
-                        (placeOverlapPositions ship availablePositions)
-                    )
-                )
-                |> Random.andThen
-                    (\res ->
-                        let
-                            maybePos =
-                                Tuple.first res
-                        in
-                        case maybePos of
-                            Nothing ->
-                                Random.constant [ takenPos ]
-
-                            Just pos ->
-                                if List.length ships == 0 then
-                                    Random.constant [ pos ]
-
-                                else
-                                    Random.map
-                                        (\partialList ->
-                                            pos :: partialList
-                                        )
-                                        (choosePositions
-                                            (List.drop 1 ships)
-                                            (placeShipPosition ship pos availablePositions)
-                                        )
-                    )
-
-
-placeBoundaries : Ship -> List Position -> List Position
-placeBoundaries ship positions =
-    case ship.orientation of
-        Horizontal ->
-            List.Extra.updateIfIndex
-                (byHorizontal ship.size)
-                (\_ -> boundaryPos)
-                positions
-
-        Vertical ->
-            List.Extra.updateIfIndex
-                (byVertical ship.size)
-                (\_ -> boundaryPos)
-                positions
-
-
-byHorizontal : Int -> Int -> Bool
-byHorizontal size index =
-    (maxRow * maxCol) - (size - 1) * maxCol - 1 < index
-
-
-byVertical : Int -> Int -> Bool
-byVertical size index =
-    (maxRow - modBy 10 index) < size
-
-
-placeOverlapPositions : Ship -> List Position -> List Position
-placeOverlapPositions ship positions =
-    let
-        indices =
-            List.Extra.elemIndices takenPos positions
-    in
-    case ship.orientation of
-        Horizontal ->
-            List.Extra.updateIfIndex
-                (\idx ->
-                    List.member
-                        idx
-                        (horizontalOverlapIndices ship.size indices)
-                )
-                (\_ -> overlapPos)
-                positions
-
-        Vertical ->
-            List.Extra.updateIfIndex
-                (\idx ->
-                    List.member
-                        idx
-                        (verticalOverlapIndices ship.size indices)
-                )
-                (\_ -> overlapPos)
-                positions
-
-
-horizontalOverlapIndices : Int -> List Int -> List Int
-horizontalOverlapIndices size indices =
-    List.Extra.filterNot
-        (\idx -> List.member idx indices)
-        (List.Extra.unique
-            (List.concat
-                (List.map
-                    (\index ->
-                        List.indexedMap
-                            (\i n -> n - (maxCol * i))
-                            (List.repeat size index)
-                    )
-                    indices
-                )
-            )
-        )
-
-
-verticalOverlapIndices : Int -> List Int -> List Int
-verticalOverlapIndices size indices =
-    List.Extra.filterNot
-        (\idx -> List.member idx indices)
-        (List.Extra.unique
-            (List.concat
-                (List.map
-                    (\index ->
-                        List.indexedMap
-                            (\i n -> n - i)
-                            (List.repeat size index)
-                    )
-                    indices
-                )
-            )
-        )
-
-
-placeShipPosition : Ship -> Position -> List Position -> List Position
-placeShipPosition ship pos positions =
-    let
-        maybeIndex =
-            List.Extra.elemIndex pos positions
-    in
-    case maybeIndex of
-        Nothing ->
-            positions
-
-        Just index ->
-            case ship.orientation of
-                Vertical ->
-                    placeVerticalShip index ship.size positions
-
-                Horizontal ->
-                    placeHorizontalShip index ship.size positions
-
-
-placeVerticalShip : Int -> Int -> List Position -> List Position
-placeVerticalShip index size positions =
-    List.Extra.updateIfIndex
-        (\idx ->
-            List.member idx (verticalIndices index size)
-        )
-        (\_ -> takenPos)
-        positions
-
-
-placeHorizontalShip : Int -> Int -> List Position -> List Position
-placeHorizontalShip index size positions =
-    List.Extra.updateIfIndex
-        (\idx ->
-            List.member idx (horizontalIndices index size)
-        )
-        (\_ -> takenPos)
-        positions
-
-
-horizontalIndices : Int -> Int -> List Int
-horizontalIndices index size =
-    List.indexedMap
-        (\i n -> n + (maxCol * i))
-        (List.repeat size index)
-
-
-verticalIndices : Int -> Int -> List Int
-verticalIndices index size =
-    List.indexedMap
-        (\i n -> n + i)
-        (List.repeat size index)
-
-
-randomizePositions : List Ship -> Random.Generator (List Position)
-randomizePositions ships =
-    let
-        sizes =
-            List.map mapToSizeTuple ships
-    in
-    Random.Extra.sequence (List.map mapToRandomTuplePair sizes)
-
-
-mapToSizeTuple : Ship -> Position
-mapToSizeTuple ship =
-    if ship.orientation == Horizontal then
-        ( ship.size, 0 )
-
-    else
-        ( 0, ship.size )
-
-
-mapToRandomTuplePair : Position -> Random.Generator Position
-mapToRandomTuplePair tuple =
-    let
-        cols =
-            Tuple.first tuple
-
-        rows =
-            Tuple.second tuple
-    in
-    Random.pair
-        (Random.map2
-            pickFirstDigit
-            (Random.int 0 (maxCol - 1 - cols))
-            (Random.Extra.choice 0 1)
-        )
-        (Random.map2
-            pickFirstDigit
-            (Random.int 0 (maxRow - 1 - rows))
-            (Random.Extra.choice 0 1)
-        )
-
-
-pickFirstDigit : Int -> Int -> Int
-pickFirstDigit d flag =
-    modBy 10 (2 * d + flag)
-
-
-updatePositions : List Position -> List Ship -> List Ship
+updatePositions : List Ship.Position -> List Ship.Ship -> List Ship.Ship
 updatePositions positions ships =
     List.map2 updatePosition positions ships
 
 
-updatePosition : Position -> Ship -> Ship
+updatePosition : Ship.Position -> Ship.Ship -> Ship.Ship
 updatePosition pos ship =
     { ship | position = pos }
 
@@ -514,12 +225,12 @@ viewGrid model attrs nodes =
 -- FUNCTIONS
 
 
-makeShips : List Ship -> List (Svg.Svg msg)
+makeShips : List Ship.Ship -> List (Svg.Svg msg)
 makeShips ships =
     List.map svgShip ships
 
 
-shipSize : Orientation -> Ship -> Int
+shipSize : Ship.Orientation -> Ship.Ship -> Int
 shipSize orientation ship =
     if ship.orientation == orientation then
         ship.size * boxSize
@@ -532,18 +243,21 @@ shipSize orientation ship =
 -- SHAPES
 
 
-svgShip : Ship -> Svg.Svg msg
+svgShip : Ship.Ship -> Svg.Svg msg
 svgShip ship =
-    Svg.g []
+    Svg.g
+        [ draggable "true"
+        , style "cursor" "move"
+        ]
         [ Svg.rect
             [ Svg.Attributes.x
                 (String.fromInt (Tuple.first ship.position * boxSize))
             , Svg.Attributes.y
                 (String.fromInt (Tuple.second ship.position * boxSize))
             , Svg.Attributes.width
-                (String.fromInt (shipSize Horizontal ship))
+                (String.fromInt (shipSize Ship.Horizontal ship))
             , Svg.Attributes.height
-                (String.fromInt (shipSize Vertical ship))
+                (String.fromInt (shipSize Ship.Vertical ship))
             , Svg.Attributes.fill "green"
             , Svg.Attributes.fillOpacity "0.7"
             , Svg.Attributes.stroke "green"
