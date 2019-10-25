@@ -1,6 +1,21 @@
-module Ship exposing (Orientation(..), Position, Ship, Type(..))
+module Ship exposing (Orientation(..), Position, Ship, Type(..), choosePositions, randomizeOrientation)
 
--- SHIP
+import List.Extra
+import Random
+import Random.Extra
+import Random.List
+
+
+takenPos =
+    ( -1, -1 )
+
+
+boundaryPos =
+    ( -2, -2 )
+
+
+overlapPos =
+    ( -3, -3 )
 
 
 type alias Ship =
@@ -26,3 +41,214 @@ type Type
 type Orientation
     = Horizontal
     | Vertical
+
+
+randomizeOrientation : List Ship -> Random.Generator (List Orientation)
+randomizeOrientation ships =
+    Random.map
+        (\list -> List.map mapToOrientation list)
+        (Random.list (List.length ships) (Random.int 0 1))
+
+
+mapToOrientation : Int -> Orientation
+mapToOrientation n =
+    if n == 0 then
+        Horizontal
+
+    else
+        Vertical
+
+
+choosePositions : Int -> Int -> List Ship -> List Position -> Random.Generator (List Position)
+choosePositions cols rows ships availablePositions =
+    let
+        maybeShip =
+            List.head ships
+    in
+    case maybeShip of
+        Nothing ->
+            Random.constant availablePositions
+
+        Just ship ->
+            Random.List.choose (choosePosition cols rows ship availablePositions)
+                |> Random.andThen
+                    (\res ->
+                        let
+                            maybePos =
+                                Tuple.first res
+                        in
+                        case maybePos of
+                            Nothing ->
+                                Random.constant [ takenPos ]
+
+                            Just pos ->
+                                if List.length ships == 0 then
+                                    Random.constant [ pos ]
+
+                                else
+                                    Random.map
+                                        (\partialList ->
+                                            pos :: partialList
+                                        )
+                                        (choosePositions
+                                            cols
+                                            rows
+                                            (List.drop 1 ships)
+                                            (placeShipPosition cols ship pos availablePositions)
+                                        )
+                    )
+
+
+choosePosition : Int -> Int -> Ship -> List Position -> List Position
+choosePosition cols rows ship positions =
+    List.filter
+        (\n -> Tuple.first n > -1)
+        (placeBoundaries
+            cols
+            rows
+            ship
+            (placeOverlapPositions cols ship positions)
+        )
+
+
+placeBoundaries : Int -> Int -> Ship -> List Position -> List Position
+placeBoundaries cols rows ship positions =
+    case ship.orientation of
+        Horizontal ->
+            List.Extra.updateIfIndex
+                (byHorizontal cols rows ship.size)
+                (\_ -> boundaryPos)
+                positions
+
+        Vertical ->
+            List.Extra.updateIfIndex
+                (byVertical rows ship.size)
+                (\_ -> boundaryPos)
+                positions
+
+
+byHorizontal : Int -> Int -> Int -> Int -> Bool
+byHorizontal cols rows size index =
+    (rows * cols) - (size - 1) * cols - 1 < index
+
+
+byVertical : Int -> Int -> Int -> Bool
+byVertical rows size index =
+    (rows - modBy 10 index) < size
+
+
+placeOverlapPositions : Int -> Ship -> List Position -> List Position
+placeOverlapPositions cols ship positions =
+    let
+        indices =
+            List.Extra.elemIndices takenPos positions
+    in
+    case ship.orientation of
+        Horizontal ->
+            List.Extra.updateIfIndex
+                (\idx ->
+                    List.member
+                        idx
+                        (horizontalOverlapIndices cols ship.size indices)
+                )
+                (\_ -> overlapPos)
+                positions
+
+        Vertical ->
+            List.Extra.updateIfIndex
+                (\idx ->
+                    List.member
+                        idx
+                        (verticalOverlapIndices ship.size indices)
+                )
+                (\_ -> overlapPos)
+                positions
+
+
+placeShipPosition : Int -> Ship -> Position -> List Position -> List Position
+placeShipPosition cols ship pos positions =
+    let
+        maybeIndex =
+            List.Extra.elemIndex pos positions
+    in
+    case maybeIndex of
+        Nothing ->
+            positions
+
+        Just index ->
+            case ship.orientation of
+                Vertical ->
+                    placeVerticalShip index ship.size positions
+
+                Horizontal ->
+                    placeHorizontalShip cols index ship.size positions
+
+
+placeVerticalShip : Int -> Int -> List Position -> List Position
+placeVerticalShip index size positions =
+    List.Extra.updateIfIndex
+        (\idx ->
+            List.member idx (verticalIndices index size)
+        )
+        (\_ -> takenPos)
+        positions
+
+
+placeHorizontalShip : Int -> Int -> Int -> List Position -> List Position
+placeHorizontalShip cols index size positions =
+    List.Extra.updateIfIndex
+        (\idx ->
+            List.member idx (horizontalIndices cols index size)
+        )
+        (\_ -> takenPos)
+        positions
+
+
+horizontalIndices : Int -> Int -> Int -> List Int
+horizontalIndices cols index size =
+    List.indexedMap
+        (\i n -> n + (cols * i))
+        (List.repeat size index)
+
+
+verticalIndices : Int -> Int -> List Int
+verticalIndices index size =
+    List.indexedMap
+        (\i n -> n + i)
+        (List.repeat size index)
+
+
+horizontalOverlapIndices : Int -> Int -> List Int -> List Int
+horizontalOverlapIndices cols size indices =
+    List.Extra.filterNot
+        (\idx -> List.member idx indices)
+        (List.Extra.unique
+            (List.concat
+                (List.map
+                    (\index ->
+                        List.indexedMap
+                            (\i n -> n - (cols * i))
+                            (List.repeat size index)
+                    )
+                    indices
+                )
+            )
+        )
+
+
+verticalOverlapIndices : Int -> List Int -> List Int
+verticalOverlapIndices size indices =
+    List.Extra.filterNot
+        (\idx -> List.member idx indices)
+        (List.Extra.unique
+            (List.concat
+                (List.map
+                    (\index ->
+                        List.indexedMap
+                            (\i n -> n - i)
+                            (List.repeat size index)
+                    )
+                    indices
+                )
+            )
+        )

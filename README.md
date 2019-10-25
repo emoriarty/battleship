@@ -55,6 +55,7 @@ WebRTC data channel.
 **Pending Research**.
 
 ## TODO
+* [x] __[Modules]__: Extract Ship related functionality into its own module
 * [ ] __[Random Positioning]__: prevent ships with the same orientation being placed in the 
 same line when other ship is present.
 * [ ] __[Custom Positioning]__: Dragging ships.
