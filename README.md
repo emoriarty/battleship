@@ -7,7 +7,7 @@ Cartesian plane. In the battleship game, there's no need for the whole plane,
 only with one of the quadarant will suffice, but the technique for the playing
 remains the same with a small difference.
 
-![Cartesian system](cartesian_coordinates_2D.svg =350x)
+<img src="cartesian_coordinates_2D.svg" alt="Cartesian coordinate system" width="350"/>
 
 The main difference between the real and computer world lies in an inverted 
 y-axis. While in real world y-axis goes up (or what we think is "up" in earth).
