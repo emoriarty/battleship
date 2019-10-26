@@ -4,19 +4,26 @@
 
 The grid where ships are set down is what in mathematics is called a 
 Cartesian plane. In the battleship game, there's no need for the whole plane,
-only with one of the quadarant will suffice, but the technique for the playing
-remains the same with a small difference.
+only with one of the quadarant will suffice, but the technique for the play
+set up remains the same with a small difference.
 
 <img src="cartesian_coordinates_2D.svg" alt="Cartesian coordinate system" width="350"/>
 
 The main difference between the real and computer world lies in an inverted 
-y-axis. While in real world y-axis goes up (or what we think is "up" in earth).
+y-axis. In real world y-axis goes up (or what we think is "up" in earth).
 Inside a computer, the y-axis is inverted. This is because the starting
 position in the screen are set on the top left corner. So, the game takes
-place in teh IV quadarant (as seen in the above image) but with a positive 
+place in the IV quadarant (as seen in the above image) but with a positive 
 y-axis.
 
-## Random Positioning
+<img src="screen-axes.png" alt="Cartesian coordinate system" width="350"/>
+
+Being aware of this particularity, ships must be placed following the same 
+rules as the Cartesian coordinate system. From the starting point (0, 0) 
+ships are put down to the left, along the x-axis (Horizontal), or down, 
+following the y-axis (Vertical).
+
+## Initial Setup (Random Positioning)
 
 To facilitate the game to the player, it helps to establish a game 
 configuration right from the beginning. The player is able to do any 
@@ -41,7 +48,7 @@ orientations, this strategy ussualy helps to confuse the opponent. But ships wit
 the same orientation colliding in the same line is not actually a good strategy, 
 it is just so easy following that sinking line.
 
-## Custom Positioning
+## Custom Setup (Custom Positioning)
 
 I think the best way to move ships is to pick them up and drag them around. 
 In principle this is done for PCs, but in addition, except by some minor 
