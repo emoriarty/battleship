@@ -13,9 +13,8 @@ The main difference between the real and computer world lies in an inverted
 y-axis. While in real world y-axis goes up (or what we think is "up" in earth).
 Inside a computer, the y-axis is inverted. This is because the starting
 position in the screen are set on the top left corner. So, the game takes
-place in teh II quadarant (as seen in the above image) but with a positive 
+place in teh IV quadarant (as seen in the above image) but with a positive 
 y-axis.
-
 
 ## Random Positioning
 
