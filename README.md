@@ -1,5 +1,22 @@
 # Battleship (Elm)
 
+## Positioning
+
+The grid where ships are set down is what in mathematics is called a 
+Cartesian plane. In the battleship game, there's no need for the whole plane,
+only with one of the quadarant will suffice, but the technique for the playing
+remains the same with a small difference.
+
+![Cartesian system](cartesian_coordinates_2D.svg)
+
+The main difference between the real and computer world lies in an inverted 
+y-axis. While in real world y-axis goes up (or what we think is "up" in earth).
+Inside a computer, the y-axis is inverted. This is because the starting
+position in the screen are set on the top left corner. So, the game takes
+place in teh II quadarant (as seen in the above image) but with a positive 
+y-axis.
+
+
 ## Random Positioning
 
 To facilitate the game to the player, it helps to establish a game 
