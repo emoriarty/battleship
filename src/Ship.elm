@@ -1,4 +1,4 @@
-module Ship exposing (Orientation(..), Position, Ship, Type(..), choosePositions, randomizeOrientation)
+module Ship exposing (Orientation(..), Position, Ship, Type(..), randomizeOrientation, randomizePositions)
 
 import List.Extra
 import Random
@@ -46,7 +46,7 @@ type Orientation
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
 randomizeOrientation ships =
     Random.map
-        (\list -> List.map mapToOrientation list)
+        (List.map mapToOrientation)
         (Random.list (List.length ships) (Random.int 0 1))
 
 
@@ -59,11 +59,25 @@ mapToOrientation n =
         Vertical
 
 
-choosePositions : Int -> Int -> List Ship -> List Position -> Random.Generator (List Position)
-choosePositions cols rows ships availablePositions =
+randomizePositions : List Ship -> List (List Position) -> Random.Generator (List Position)
+randomizePositions ships positions =
     let
         maybeShip =
             List.head ships
+
+        cols =
+            case List.head positions of
+                Just list ->
+                    List.length list
+
+                Nothing ->
+                    0
+
+        rows =
+            List.length positions
+
+        availablePositions =
+            List.concat positions
     in
     case maybeShip of
         Nothing ->
@@ -90,11 +104,12 @@ choosePositions cols rows ships availablePositions =
                                         (\partialList ->
                                             pos :: partialList
                                         )
-                                        (choosePositions
-                                            cols
-                                            rows
+                                        (randomizePositions
                                             (List.drop 1 ships)
-                                            (placeShipPosition cols ship pos availablePositions)
+                                            (List.Extra.groupsOf
+                                                cols
+                                                (placeShipPosition cols ship pos availablePositions)
+                                            )
                                         )
                     )
 
