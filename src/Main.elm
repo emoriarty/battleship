@@ -1,15 +1,11 @@
 module Main exposing (main)
 
-import Bitwise
 import Browser
 import Debug
 import Html exposing (..)
 import Html.Attributes exposing (draggable, style)
 import Html.Events exposing (onClick)
-import List.Extra
 import Random
-import Random.Extra
-import Random.List
 import Ship
 import Svg
 import Svg.Attributes
@@ -103,7 +99,7 @@ update msg model =
         SetPosition ->
             ( model
             , Random.generate UpdatePosition
-                (Ship.choosePositions maxCol maxRow model.ships (List.concat model.availablePositions))
+                (Ship.randomizePositions model.ships model.availablePositions)
             )
 
         UpdatePosition positions ->
