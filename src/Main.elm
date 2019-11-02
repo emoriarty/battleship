@@ -5,6 +5,8 @@ import Debug
 import Html exposing (..)
 import Html.Attributes exposing (draggable, style)
 import Html.Events exposing (onClick)
+import Json.Decode as Json
+import List.Extra
 import Random
 import Ship
 import Svg
@@ -27,6 +29,10 @@ maxRow =
     10
 
 
+noShipIndex =
+    -1
+
+
 
 -- MAIN
 
@@ -46,7 +52,13 @@ main =
 
 type alias Model =
     { ships : List Ship.Ship
-    , availablePositions : List (List Ship.Position)
+    , shipIndex : Int
+    }
+
+
+type alias GridPosition =
+    { offsetX : Int
+    , offsetY : Int
     }
 
 
@@ -56,7 +68,7 @@ type alias Model =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model [] (Debug.log "grid" (initGrid maxRow maxCol))
+    ( Model [] noShipIndex
     , Cmd.none
     )
 
@@ -72,6 +84,9 @@ type Msg
     | SetPosition
     | UpdateOrientation (List Ship.Orientation)
     | UpdatePosition (List Ship.Position)
+    | DragStart Int
+    | Drag GridPosition
+    | DragEnd
 
 
 update : Msg -> Model -> ( Model, Cmd Msg )
@@ -99,13 +114,42 @@ update msg model =
         SetPosition ->
             ( model
             , Random.generate UpdatePosition
-                (Ship.randomizePositions model.ships model.availablePositions)
+                (Ship.randomizePositions model.ships (initGrid maxRow maxCol))
             )
 
         UpdatePosition positions ->
             ( { model | ships = updatePositions positions model.ships }
             , Cmd.none
             )
+
+        DragStart shipIndex ->
+            ( { model | shipIndex = shipIndex }
+            , Cmd.none
+            )
+
+        Drag gridPosition ->
+            let
+                maybeShip =
+                    List.Extra.getAt model.shipIndex model.ships
+            in
+            case maybeShip of
+                Just ship ->
+                    let
+                        updatedShip =
+                            updateShipPosition gridPosition ship
+
+                        updatedShips =
+                            List.Extra.setAt model.shipIndex updatedShip model.ships
+                    in
+                    ( { model | ships = updatedShips }
+                    , Cmd.none
+                    )
+
+                Nothing ->
+                    ( model, Cmd.none )
+
+        DragEnd ->
+            ( { model | shipIndex = noShipIndex }, Cmd.none )
 
 
 
@@ -121,17 +165,17 @@ initGrid rows cols =
 fillGrid : Int -> Int -> List Ship.Position
 fillGrid index length =
     List.map
-        (Tuple.pair index)
+        (Ship.Position index)
         (List.range 0 (length - 1))
 
 
 initShips : List Ship.Ship
 initShips =
-    [ Ship.Ship Ship.Carrier 5 ( 0, 0 ) Ship.Vertical
-    , Ship.Ship Ship.Battleship 4 ( 0, 0 ) Ship.Vertical
-    , Ship.Ship Ship.Cruiser 3 ( 0, 0 ) Ship.Vertical
-    , Ship.Ship Ship.Submarine 3 ( 0, 0 ) Ship.Vertical
-    , Ship.Ship Ship.Destroyer 2 ( 0, 0 ) Ship.Vertical
+    [ Ship.Ship Ship.Carrier 5 (Ship.Position 0 0) Ship.Vertical
+    , Ship.Ship Ship.Battleship 4 (Ship.Position 0 0) Ship.Vertical
+    , Ship.Ship Ship.Cruiser 3 (Ship.Position 0 0) Ship.Vertical
+    , Ship.Ship Ship.Submarine 3 (Ship.Position 0 0) Ship.Vertical
+    , Ship.Ship Ship.Destroyer 2 (Ship.Position 0 0) Ship.Vertical
     ]
 
 
@@ -153,6 +197,47 @@ updatePosition pos ship =
     { ship | position = pos }
 
 
+updateShipPosition : GridPosition -> Ship.Ship -> Ship.Ship
+updateShipPosition gridPos ship =
+    let
+        x =
+            updateX ship.position.x gridPos.offsetX
+
+        y =
+            updateY ship.position.y gridPos.offsetY
+
+        shipPosition =
+            ship.position
+    in
+    { ship | position = { shipPosition | x = x, y = y } }
+
+
+updateX : Int -> Int -> Int
+updateX x offsetX =
+    let
+        parsedX =
+            offsetX // boxSize
+    in
+    if parsedX /= x && parsedX < maxCol && parsedX > -1 then
+        parsedX
+
+    else
+        x
+
+
+updateY : Int -> Int -> Int
+updateY y offsetY =
+    let
+        parsedY =
+            offsetY // boxSize
+    in
+    if parsedY /= y && parsedY < maxRow && parsedY > -1 then
+        parsedY
+
+    else
+        y
+
+
 
 -- SUBSCRIPTIONS
 
@@ -160,6 +245,59 @@ updatePosition pos ship =
 subscriptions : Model -> Sub Msg
 subscriptions model =
     Sub.none
+
+
+
+-- HTML.EVENTS
+
+
+onDragStart : Attribute Msg
+onDragStart =
+    Html.Events.on "mousedown" (Json.map DragStart idDecoder)
+
+
+onDrag : Attribute Msg
+onDrag =
+    Html.Events.on "mousemove" (Json.map Drag positionDecoder)
+
+
+onDragEnd : Attribute Msg
+onDragEnd =
+    Html.Events.onMouseUp DragEnd
+
+
+onLeaveDrag : Attribute Msg
+onLeaveDrag =
+    Html.Events.onMouseLeave DragEnd
+
+
+
+-- DECODERS
+
+
+positionDecoder : Json.Decoder GridPosition
+positionDecoder =
+    Json.map2 GridPosition
+        (Json.at [ "offsetX" ] Json.int)
+        (Json.at [ "offsetY" ] Json.int)
+
+
+idDecoder : Json.Decoder Int
+idDecoder =
+    Json.at [ "target", "id" ] Json.string
+        |> Json.andThen stringToIntDecoder
+
+
+stringToIntDecoder : String -> Json.Decoder Int
+stringToIntDecoder string =
+    String.toInt string
+        |> Maybe.map Json.succeed
+        |> Maybe.withDefault
+            (Json.fail <|
+                "The provided String '"
+                    ++ string
+                    ++ "' is not a mumber"
+            )
 
 
 
@@ -179,7 +317,10 @@ view model =
                 ]
             , viewGrid
                 model
-                []
+                [ onDrag
+                , onDragEnd
+                , onLeaveDrag
+                ]
                 (makeShips model.ships)
             , viewGrid model
                 [ style "float" "right" ]
@@ -221,9 +362,9 @@ viewGrid model attrs nodes =
 -- FUNCTIONS
 
 
-makeShips : List Ship.Ship -> List (Svg.Svg msg)
+makeShips : List Ship.Ship -> List (Svg.Svg Msg)
 makeShips ships =
-    List.map svgShip ships
+    List.indexedMap svgShip ships
 
 
 shipSize : Ship.Orientation -> Ship.Ship -> Int
@@ -239,17 +380,17 @@ shipSize orientation ship =
 -- SHAPES
 
 
-svgShip : Ship.Ship -> Svg.Svg msg
-svgShip ship =
+svgShip : Int -> Ship.Ship -> Svg.Svg Msg
+svgShip index ship =
     Svg.g
-        [ draggable "true"
-        , style "cursor" "move"
+        [ style "cursor" "move"
         ]
         [ Svg.rect
-            [ Svg.Attributes.x
-                (String.fromInt (Tuple.first ship.position * boxSize))
+            [ Svg.Attributes.id (String.fromInt index)
+            , Svg.Attributes.x
+                (String.fromInt (ship.position.x * boxSize))
             , Svg.Attributes.y
-                (String.fromInt (Tuple.second ship.position * boxSize))
+                (String.fromInt (ship.position.y * boxSize))
             , Svg.Attributes.width
                 (String.fromInt (shipSize Ship.Horizontal ship))
             , Svg.Attributes.height
@@ -258,6 +399,7 @@ svgShip ship =
             , Svg.Attributes.fillOpacity "0.7"
             , Svg.Attributes.stroke "green"
             , Svg.Attributes.strokeWidth "2px"
+            , onDragStart
             ]
             []
         ]
