@@ -59,8 +59,8 @@ layout. Therefore, the same technique used to find random positions can be
 used to avoid overlapping and placing ships outside the grid: if the new 
 position is negative, it acts like a wall.
 
-To drag ships, perhaps it can be done with a shaded ship following the 
-selected one. Another way can simply be fitting the dragged ship onto new box 
+To drag ships, ~perhaps it can be done with a shaded ship following the 
+selected one. Another way~ can simply be fitting the dragged ship onto new box 
 while moving. I still have to decide it what fits better.
 
 Another critical point is to change orientation. I think the best approach is 

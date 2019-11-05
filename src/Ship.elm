@@ -1,21 +1,17 @@
-module Ship exposing (Orientation(..), Position, Ship, Type(..), randomizeOrientation, randomizePositions)
+module Ship exposing
+    ( Orientation(..)
+    , Position
+    , Ship
+    , Type(..)
+    , noShip
+    , randomizeOrientation
+    , randomizePositions
+    )
 
 import List.Extra
 import Random
 import Random.Extra
 import Random.List
-
-
-takenPos =
-    ( -1, -1 )
-
-
-boundaryPos =
-    ( -2, -2 )
-
-
-overlapPos =
-    ( -3, -3 )
 
 
 type alias Ship =
@@ -27,7 +23,7 @@ type alias Ship =
 
 
 type alias Position =
-    ( Int, Int )
+    { x : Int, y : Int }
 
 
 type Type
@@ -36,11 +32,33 @@ type Type
     | Cruiser
     | Battleship
     | Carrier
+    | NoShip
 
 
 type Orientation
     = Horizontal
     | Vertical
+    | NoOrientation
+
+
+takenPos =
+    Position -1 -1
+
+
+boundaryPos =
+    Position -2 -2
+
+
+overlapPos =
+    Position -3 -3
+
+
+noPosition =
+    Position -100 -100
+
+
+noShip =
+    Ship NoShip 0 noPosition NoOrientation
 
 
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
@@ -66,12 +84,9 @@ randomizePositions ships positions =
             List.head ships
 
         cols =
-            case List.head positions of
-                Just list ->
-                    List.length list
-
-                Nothing ->
-                    0
+            List.head positions
+                |> Maybe.map List.length
+                |> Maybe.withDefault 0
 
         rows =
             List.length positions
@@ -86,10 +101,10 @@ randomizePositions ships positions =
         Just ship ->
             Random.List.choose (choosePosition cols rows ship availablePositions)
                 |> Random.andThen
-                    (\res ->
+                    (\posAndList ->
                         let
                             maybePos =
-                                Tuple.first res
+                                Tuple.first posAndList
                         in
                         case maybePos of
                             Nothing ->
@@ -101,9 +116,7 @@ randomizePositions ships positions =
 
                                 else
                                     Random.map
-                                        (\partialList ->
-                                            pos :: partialList
-                                        )
+                                        ((::) pos)
                                         (randomizePositions
                                             (List.drop 1 ships)
                                             (List.Extra.groupsOf
@@ -117,7 +130,7 @@ randomizePositions ships positions =
 choosePosition : Int -> Int -> Ship -> List Position -> List Position
 choosePosition cols rows ship positions =
     List.filter
-        (\n -> Tuple.first n > -1)
+        (\n -> n.x > -1)
         (placeBoundaries
             cols
             rows
@@ -132,14 +145,17 @@ placeBoundaries cols rows ship positions =
         Horizontal ->
             List.Extra.updateIfIndex
                 (byHorizontal cols rows ship.size)
-                (\_ -> boundaryPos)
+                (always boundaryPos)
                 positions
 
         Vertical ->
             List.Extra.updateIfIndex
                 (byVertical rows ship.size)
-                (\_ -> boundaryPos)
+                (always boundaryPos)
                 positions
+
+        NoOrientation ->
+            positions
 
 
 byHorizontal : Int -> Int -> Int -> Int -> Bool
@@ -166,7 +182,7 @@ placeOverlapPositions cols ship positions =
                         idx
                         (horizontalOverlapIndices cols ship.size indices)
                 )
-                (\_ -> overlapPos)
+                (always overlapPos)
                 positions
 
         Vertical ->
@@ -176,8 +192,11 @@ placeOverlapPositions cols ship positions =
                         idx
                         (verticalOverlapIndices ship.size indices)
                 )
-                (\_ -> overlapPos)
+                (always overlapPos)
                 positions
+
+        NoOrientation ->
+            positions
 
 
 placeShipPosition : Int -> Ship -> Position -> List Position -> List Position
@@ -198,6 +217,9 @@ placeShipPosition cols ship pos positions =
                 Horizontal ->
                     placeHorizontalShip cols index ship.size positions
 
+                NoOrientation ->
+                    positions
+
 
 placeVerticalShip : Int -> Int -> List Position -> List Position
 placeVerticalShip index size positions =
@@ -205,7 +227,7 @@ placeVerticalShip index size positions =
         (\idx ->
             List.member idx (verticalIndices index size)
         )
-        (\_ -> takenPos)
+        (always takenPos)
         positions
 
 
@@ -215,7 +237,7 @@ placeHorizontalShip cols index size positions =
         (\idx ->
             List.member idx (horizontalIndices cols index size)
         )
-        (\_ -> takenPos)
+        (always takenPos)
         positions
 
 
