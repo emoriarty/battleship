@@ -1,4 +1,12 @@
-module Ship exposing (Orientation(..), Position, Ship, Type(..), randomizeOrientation, randomizePositions)
+module Ship exposing
+    ( Orientation(..)
+    , Position
+    , Ship
+    , Type(..)
+    , noShip
+    , randomizeOrientation
+    , randomizePositions
+    )
 
 import List.Extra
 import Random
@@ -24,11 +32,13 @@ type Type
     | Cruiser
     | Battleship
     | Carrier
+    | NoShip
 
 
 type Orientation
     = Horizontal
     | Vertical
+    | NoOrientation
 
 
 takenPos =
@@ -41,6 +51,14 @@ boundaryPos =
 
 overlapPos =
     Position -3 -3
+
+
+noPosition =
+    Position -100 -100
+
+
+noShip =
+    Ship NoShip 0 noPosition NoOrientation
 
 
 randomizeOrientation : List Ship -> Random.Generator (List Orientation)
@@ -136,6 +154,9 @@ placeBoundaries cols rows ship positions =
                 (always boundaryPos)
                 positions
 
+        NoOrientation ->
+            positions
+
 
 byHorizontal : Int -> Int -> Int -> Int -> Bool
 byHorizontal cols rows size index =
@@ -174,6 +195,9 @@ placeOverlapPositions cols ship positions =
                 (always overlapPos)
                 positions
 
+        NoOrientation ->
+            positions
+
 
 placeShipPosition : Int -> Ship -> Position -> List Position -> List Position
 placeShipPosition cols ship pos positions =
@@ -192,6 +216,9 @@ placeShipPosition cols ship pos positions =
 
                 Horizontal ->
                     placeHorizontalShip cols index ship.size positions
+
+                NoOrientation ->
+                    positions
 
 
 placeVerticalShip : Int -> Int -> List Position -> List Position

@@ -53,19 +53,20 @@ main =
 type alias Model =
     { ships : List Ship.Ship
     , shipIndex : Int
-    , offset : PointerOffset
+    , draggedShip : Ship.Ship
+    , offset : OffsetDrag
     }
 
 
-type alias PointerOffset =
-    { offsetX : Int
-    , offsetY : Int
+type alias OffsetDrag =
+    { x : Int
+    , y : Int
     }
 
 
 type alias StartDrag =
-    { index : Int
-    , offset : PointerOffset
+    { shipIndex : Int
+    , offset : OffsetDrag
     }
 
 
@@ -75,7 +76,7 @@ type alias StartDrag =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model [] noShipIndex (PointerOffset 0 0)
+    ( Model [] noShipIndex Ship.noShip (OffsetDrag 0 0)
     , Cmd.none
     )
 
@@ -92,7 +93,7 @@ type Msg
     | UpdateOrientation (List Ship.Orientation)
     | UpdatePosition (List Ship.Position)
     | DragStart StartDrag
-    | Drag PointerOffset
+    | Drag OffsetDrag
     | DragEnd
 
 
@@ -132,23 +133,14 @@ update msg model =
         DragStart startDrag ->
             let
                 maybeShip =
-                    List.Extra.getAt startDrag.index model.ships
+                    List.Extra.getAt startDrag.shipIndex model.ships
             in
             case maybeShip of
                 Just ship ->
-                    let
-                        offsetX =
-                            startDrag.offset.offsetX // boxSize - ship.position.x
-
-                        offsetY =
-                            startDrag.offset.offsetY // boxSize - ship.position.y
-
-                        pointerOffset =
-                            model.offset
-                    in
                     ( { model
-                        | shipIndex = startDrag.index
-                        , offset = { pointerOffset | offsetX = offsetX, offsetY = offsetY }
+                        | shipIndex = startDrag.shipIndex
+                        , draggedShip = ship
+                        , offset = encodeOffset ship.position startDrag.offset
                       }
                     , Cmd.none
                     )
@@ -156,29 +148,15 @@ update msg model =
                 Nothing ->
                     ( model, Cmd.none )
 
-        Drag gridPosition ->
-            let
-                maybeShip =
-                    List.Extra.getAt model.shipIndex model.ships
-            in
-            case maybeShip of
-                Just ship ->
-                    let
-                        updatedShip =
-                            updateShipPosition gridPosition model.offset ship
-
-                        updatedShips =
-                            List.Extra.setAt model.shipIndex updatedShip model.ships
-                    in
-                    ( { model | ships = updatedShips }
-                    , Cmd.none
-                    )
-
-                Nothing ->
-                    ( model, Cmd.none )
+        Drag pointer ->
+            ( { model | ships = updateShips pointer model.offset model.draggedShip model.ships model.shipIndex }
+            , Cmd.none
+            )
 
         DragEnd ->
-            ( { model | shipIndex = noShipIndex }, Cmd.none )
+            ( { model | shipIndex = noShipIndex, draggedShip = Ship.noShip }
+            , Cmd.none
+            )
 
 
 
@@ -226,14 +204,23 @@ updatePosition pos ship =
     { ship | position = pos }
 
 
-updateShipPosition : PointerOffset -> PointerOffset -> Ship.Ship -> Ship.Ship
+updateShips : OffsetDrag -> OffsetDrag -> Ship.Ship -> List Ship.Ship -> Int -> List Ship.Ship
+updateShips pointer offset ship ships index =
+    let
+        updatedShip =
+            updateShipPosition pointer offset ship
+    in
+    List.Extra.setAt index updatedShip ships
+
+
+updateShipPosition : OffsetDrag -> OffsetDrag -> Ship.Ship -> Ship.Ship
 updateShipPosition gridPos offset ship =
     let
         x =
-            updateX ship gridPos.offsetX offset.offsetX
+            updateX ship gridPos.x offset.x
 
         y =
-            updateY ship gridPos.offsetY offset.offsetY
+            updateY ship gridPos.y offset.y
 
         shipPosition =
             ship.position
@@ -254,6 +241,9 @@ updateX ship pointerX shipOffset =
 
                 Ship.Horizontal ->
                     maxCol - ship.size + 1
+
+                Ship.NoOrientation ->
+                    maxCol
     in
     if x < maxAllowedX && x > -1 then
         x
@@ -275,12 +265,27 @@ updateY ship pointerY shipOffset =
 
                 Ship.Horizontal ->
                     maxRow
+
+                Ship.NoOrientation ->
+                    maxRow
     in
     if y < maxAllowedY && y > -1 then
         y
 
     else
         ship.position.y
+
+
+encodeOffset : Ship.Position -> OffsetDrag -> OffsetDrag
+encodeOffset position offset =
+    let
+        offsetX =
+            offset.x // boxSize - position.x
+
+        offsetY =
+            offset.y // boxSize - position.y
+    in
+    { x = offsetX, y = offsetY }
 
 
 
@@ -325,9 +330,9 @@ startDecoder =
     Json.map2 StartDrag idDecoder positionDecoder
 
 
-positionDecoder : Json.Decoder PointerOffset
+positionDecoder : Json.Decoder OffsetDrag
 positionDecoder =
-    Json.map2 PointerOffset
+    Json.map2 OffsetDrag
         (Json.at [ "offsetX" ] Json.int)
         (Json.at [ "offsetY" ] Json.int)
 
