@@ -53,8 +53,8 @@ main =
 type alias Model =
     { ships : List Ship.Ship
     , shipIndex : Int
-    , draggedShip : Ship.Ship
     , offset : OffsetDrag
+    , occupiedPositions : List Ship.Position
     }
 
 
@@ -76,7 +76,7 @@ type alias StartDrag =
 
 init : () -> ( Model, Cmd Msg )
 init _ =
-    ( Model [] noShipIndex Ship.noShip (OffsetDrag 0 0)
+    ( Model [] noShipIndex (OffsetDrag 0 0) []
     , Cmd.none
     )
 
@@ -139,7 +139,6 @@ update msg model =
                 Just ship ->
                     ( { model
                         | shipIndex = startDrag.shipIndex
-                        , draggedShip = ship
                         , offset = encodeOffset ship.position startDrag.offset
                       }
                     , Cmd.none
@@ -149,18 +148,23 @@ update msg model =
                     ( model, Cmd.none )
 
         Drag pointer ->
-            ( { model | ships = updateShips pointer model.offset model.draggedShip model.ships model.shipIndex }
+            ( { model | ships = updateShips pointer model.offset model.ships model.shipIndex }
             , Cmd.none
             )
 
         DragEnd ->
-            ( { model | shipIndex = noShipIndex, draggedShip = Ship.noShip }
+            ( { model | shipIndex = noShipIndex }
             , Cmd.none
             )
 
 
 
 -- FUNCTIONS
+
+
+flip : (a -> b -> c) -> b -> a -> c
+flip fn b a =
+    fn a b
 
 
 initGrid : Int -> Int -> List (List Ship.Position)
@@ -204,13 +208,18 @@ updatePosition pos ship =
     { ship | position = pos }
 
 
-updateShips : OffsetDrag -> OffsetDrag -> Ship.Ship -> List Ship.Ship -> Int -> List Ship.Ship
-updateShips pointer offset ship ships index =
+updateShips : OffsetDrag -> OffsetDrag -> List Ship.Ship -> Int -> List Ship.Ship
+updateShips pointer offset ships index =
     let
-        updatedShip =
-            updateShipPosition pointer offset ship
+        maybeShip =
+            List.Extra.getAt index ships
     in
-    List.Extra.setAt index updatedShip ships
+    case maybeShip of
+        Just ship ->
+            List.Extra.setAt index (updateShipPosition pointer offset ship) ships
+
+        Nothing ->
+            ships
 
 
 updateShipPosition : OffsetDrag -> OffsetDrag -> Ship.Ship -> Ship.Ship
@@ -246,10 +255,10 @@ updateX ship pointerX shipOffset =
                     maxCol
     in
     if x < maxAllowedX && x > -1 then
-        x
+        Debug.log "allowed x" x
 
     else
-        ship.position.x
+        Debug.log "old x" ship.position.x
 
 
 updateY : Ship.Ship -> Int -> Int -> Int
@@ -288,6 +297,15 @@ encodeOffset position offset =
     { x = offsetX, y = offsetY }
 
 
+shipSize : Ship.Orientation -> Ship.Ship -> Int
+shipSize orientation ship =
+    if ship.orientation == orientation then
+        ship.size * boxSize
+
+    else
+        boxSize
+
+
 
 -- SUBSCRIPTIONS
 
@@ -314,11 +332,6 @@ onDrag =
 onDragEnd : Attribute Msg
 onDragEnd =
     Html.Events.onMouseUp DragEnd
-
-
-onLeaveDrag : Attribute Msg
-onLeaveDrag =
-    Html.Events.onMouseLeave DragEnd
 
 
 
@@ -375,7 +388,6 @@ view model =
                 [ onDrag
                 , onDragStart
                 , onDragEnd
-                , onLeaveDrag
                 ]
                 (makeShips model.ships)
             , viewGrid model
@@ -414,22 +426,9 @@ viewGrid model attrs nodes =
         )
 
 
-
--- FUNCTIONS
-
-
 makeShips : List Ship.Ship -> List (Svg.Svg Msg)
 makeShips ships =
     List.indexedMap svgShip ships
-
-
-shipSize : Ship.Orientation -> Ship.Ship -> Int
-shipSize orientation ship =
-    if ship.orientation == orientation then
-        ship.size * boxSize
-
-    else
-        boxSize
 
 
 
